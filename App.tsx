@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Plus, Upload, Moon, Sun, Menu, 
@@ -74,8 +73,6 @@ function App() {
       }
       return {
           provider: 'gemini',
-          // Try to use injected env if available, else empty.
-          // Note: In client-side build process.env might need specific config, but we leave it as fallback.
           apiKey: process.env.API_KEY || '', 
           baseUrl: '',
           model: 'gemini-2.5-flash'
@@ -98,16 +95,16 @@ function App() {
   // Sync State
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [authToken, setAuthToken] = useState<string>('');
-  const [requiresAuth, setRequiresAuth] = useState<boolean | null>(null); // null表示未检查，true表示需要认证，false表示不需要
+  const [requiresAuth, setRequiresAuth] = useState<boolean | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
   // Sort State
-  const [isSortingMode, setIsSortingMode] = useState<string | null>(null); // 存储正在排序的分类ID，null表示不在排序模式
-  const [isSortingPinned, setIsSortingPinned] = useState(false); // 是否正在排序置顶链接
+  const [isSortingMode, setIsSortingMode] = useState<string | null>(null);
+  const [isSortingPinned, setIsSortingPinned] = useState(false);
   
   // Batch Edit State
-  const [isBatchEditMode, setIsBatchEditMode] = useState(false); // 是否处于批量编辑模式
-  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set()); // 选中的链接ID集合
+  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
+  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
   
   // --- Helpers & Sync Logic ---
 
@@ -118,14 +115,12 @@ function App() {
         const parsed = JSON.parse(stored);
         let loadedCategories = parsed.categories || DEFAULT_CATEGORIES;
         
-        // 确保"常用推荐"分类始终存在，并确保它是第一个分类
         if (!loadedCategories.some(c => c.id === 'common')) {
           loadedCategories = [
             { id: 'common', name: '常用推荐', icon: 'Star' },
             ...loadedCategories
           ];
         } else {
-          // 如果"常用推荐"分类已存在，确保它是第一个分类
           const commonIndex = loadedCategories.findIndex(c => c.id === 'common');
           if (commonIndex > 0) {
             const commonCategory = loadedCategories[commonIndex];
@@ -137,7 +132,6 @@ function App() {
           }
         }
         
-        // 检查是否有链接的categoryId不存在于当前分类中，将这些链接移动到"常用推荐"
         const validCategoryIds = new Set(loadedCategories.map(c => c.id));
         let loadedLinks = parsed.links || INITIAL_LINKS;
         loadedLinks = loadedLinks.map(link => {
@@ -192,14 +186,11 @@ function App() {
   };
 
   const updateData = (newLinks: LinkItem[], newCategories: Category[]) => {
-      // 1. Optimistic UI Update
       setLinks(newLinks);
       setCategories(newCategories);
       
-      // 2. Save to Local Cache
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ links: newLinks, categories: newCategories }));
 
-      // 3. Sync to Cloud (if authenticated)
       if (authToken) {
           syncToCloud(newLinks, newCategories, authToken);
       }
@@ -208,17 +199,14 @@ function App() {
   // --- Effects ---
 
   useEffect(() => {
-    // Theme init
     if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
 
-    // Load Token
     const savedToken = localStorage.getItem(AUTH_KEY);
     if (savedToken) setAuthToken(savedToken);
 
-    // Load WebDAV Config
     const savedWebDav = localStorage.getItem(WEBDAV_CONFIG_KEY);
     if (savedWebDav) {
         try {
@@ -226,33 +214,28 @@ function App() {
         } catch (e) {}
     }
 
-    // Handle URL Params for Bookmarklet (Add Link)
     const urlParams = new URLSearchParams(window.location.search);
     const addUrl = urlParams.get('add_url');
     if (addUrl) {
         const addTitle = urlParams.get('add_title') || '';
-        // Clean URL params to avoid re-triggering on refresh
         window.history.replaceState({}, '', window.location.pathname);
         
         setPrefillLink({
             title: addTitle,
             url: addUrl,
-            categoryId: 'common' // Default, Modal will handle selection
+            categoryId: 'common'
         });
         setEditingLink(undefined);
         setIsModalOpen(true);
     }
 
-    // Initial Data Fetch
     const initData = async () => {
-        // 首先检查是否需要认证
         try {
             const authRes = await fetch('/api/storage?checkAuth=true');
             if (authRes.ok) {
                 const authData = await authRes.json();
                 setRequiresAuth(authData.requiresAuth);
                 
-                // 如果需要认证但用户未登录，则不获取数据
                 if (authData.requiresAuth && !savedToken) {
                     setIsCheckingAuth(false);
                     setIsAuthOpen(true);
@@ -263,7 +246,6 @@ function App() {
             console.warn("Failed to check auth requirement.", e);
         }
         
-        // 获取数据
         try {
             const res = await fetch('/api/storage');
             if (res.ok) {
@@ -287,18 +269,15 @@ function App() {
     initData();
   }, []);
 
-  // Update page title and favicon when AI config changes
   useEffect(() => {
     if (aiConfig.websiteTitle) {
       document.title = aiConfig.websiteTitle;
     }
     
     if (aiConfig.faviconUrl) {
-      // Remove existing favicon links
       const existingFavicons = document.querySelectorAll('link[rel="icon"]');
       existingFavicons.forEach(favicon => favicon.remove());
       
-      // Add new favicon
       const favicon = document.createElement('link');
       favicon.rel = 'icon';
       favicon.href = aiConfig.faviconUrl;
@@ -318,10 +297,9 @@ function App() {
     }
   };
 
-  // --- Batch Edit Functions ---
   const toggleBatchEditMode = () => {
     setIsBatchEditMode(!isBatchEditMode);
-    setSelectedLinks(new Set()); // 退出批量编辑模式时清空选中项
+    setSelectedLinks(new Set());
   };
 
   const toggleLinkSelection = (linkId: string) => {
@@ -368,18 +346,15 @@ function App() {
     setIsBatchEditMode(false);
   };
 
-  // --- Actions ---
-
   const handleLogin = async (password: string): Promise<boolean> => {
       try {
-        // 首先验证密码
         const authResponse = await fetch('/api/storage', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'x-auth-password': password
             },
-            body: JSON.stringify({ authOnly: true }) // 只用于验证密码，不更新数据
+            body: JSON.stringify({ authOnly: true })
         });
         
         if (authResponse.ok) {
@@ -388,27 +363,22 @@ function App() {
             setIsAuthOpen(false);
             setSyncStatus('saved');
             
-            // 登录成功后，从服务器获取数据
             try {
                 const res = await fetch('/api/storage');
                 if (res.ok) {
                     const data = await res.json();
-                    // 如果服务器有数据，使用服务器数据
                     if (data.links && data.links.length > 0) {
                         setLinks(data.links);
                         setCategories(data.categories || DEFAULT_CATEGORIES);
                         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
                     } else {
-                        // 如果服务器没有数据，使用本地数据
                         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ links, categories }));
-                        // 并将本地数据同步到服务器
                         syncToCloud(links, categories, password);
                     }
                 } 
             } catch (e) {
                 console.warn("Failed to fetch data after login.", e);
                 loadFromLocal();
-                // 尝试将本地数据同步到服务器
                 syncToCloud(links, categories, password);
             }
             
@@ -421,10 +391,8 @@ function App() {
   };
 
   const handleImportConfirm = (newLinks: LinkItem[], newCategories: Category[]) => {
-      // Merge categories: Avoid duplicate names/IDs
       const mergedCategories = [...categories];
       
-      // 确保"常用推荐"分类始终存在
       if (!mergedCategories.some(c => c.id === 'common')) {
         mergedCategories.push({ id: 'common', name: '常用推荐', icon: 'Star' });
       }
@@ -444,53 +412,42 @@ function App() {
   const handleAddLink = (data: Omit<LinkItem, 'id' | 'createdAt'>) => {
     if (!authToken) { setIsAuthOpen(true); return; }
     
-    // 处理URL，确保有协议前缀
     let processedUrl = data.url;
     if (processedUrl && !processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
       processedUrl = 'https://' + processedUrl;
     }
     
-    // 获取当前分类下的所有链接（不包括置顶链接）
     const categoryLinks = links.filter(link => 
       !link.pinned && (data.categoryId === 'all' || link.categoryId === data.categoryId)
     );
     
-    // 计算新链接的order值，使其排在分类最后
     const maxOrder = categoryLinks.length > 0 
       ? Math.max(...categoryLinks.map(link => link.order || 0))
       : -1;
     
     const newLink: LinkItem = {
       ...data,
-      url: processedUrl, // 使用处理后的URL
+      url: processedUrl,
       id: Date.now().toString(),
       createdAt: Date.now(),
-      order: maxOrder + 1, // 设置为当前分类的最大order值+1，确保排在最后
-      // 如果是置顶链接，设置pinnedOrder为当前置顶链接数量
+      order: maxOrder + 1,
       pinnedOrder: data.pinned ? links.filter(l => l.pinned).length : undefined
     };
     
-    // 将新链接插入到合适的位置，而不是直接放在开头
-    // 如果是置顶链接，放在置顶链接区域的最后
     if (newLink.pinned) {
       const firstNonPinnedIndex = links.findIndex(link => !link.pinned);
       if (firstNonPinnedIndex === -1) {
-        // 如果没有非置顶链接，直接添加到末尾
         updateData([...links, newLink], categories);
       } else {
-        // 插入到非置顶链接之前
         const updatedLinks = [...links];
         updatedLinks.splice(firstNonPinnedIndex, 0, newLink);
         updateData(updatedLinks, categories);
       }
     } else {
-      // 非置顶链接，按照order字段排序后插入
       const updatedLinks = [...links, newLink].sort((a, b) => {
-        // 置顶链接始终排在前面
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
         
-        // 同类型链接按照order排序
         const aOrder = a.order !== undefined ? a.order : a.createdAt;
         const bOrder = b.order !== undefined ? b.order : b.createdAt;
         return aOrder - bOrder;
@@ -498,7 +455,6 @@ function App() {
       updateData(updatedLinks, categories);
     }
     
-    // Clear prefill if any
     setPrefillLink(undefined);
   };
 
@@ -506,7 +462,6 @@ function App() {
     if (!authToken) { setIsAuthOpen(true); return; }
     if (!editingLink) return;
     
-    // 处理URL，确保有协议前缀
     let processedUrl = data.url;
     if (processedUrl && !processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
       processedUrl = 'https://' + processedUrl;
@@ -517,25 +472,20 @@ function App() {
     setEditingLink(undefined);
   };
 
-  // 拖拽结束事件处理函数
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      // 获取当前分类下的所有链接
       const categoryLinks = links.filter(link => 
         selectedCategory === 'all' || link.categoryId === selectedCategory
       );
       
-      // 找到被拖拽元素和目标元素的索引
       const activeIndex = categoryLinks.findIndex(link => link.id === active.id);
       const overIndex = categoryLinks.findIndex(link => link.id === over.id);
       
       if (activeIndex !== -1 && overIndex !== -1) {
-        // 重新排序当前分类的链接
         const reorderedCategoryLinks = arrayMove(categoryLinks, activeIndex, overIndex);
         
-        // 更新所有链接的顺序
         const updatedLinks = links.map(link => {
           const reorderedIndex = reorderedCategoryLinks.findIndex(l => l.id === link.id);
           if (reorderedIndex !== -1) {
@@ -544,7 +494,6 @@ function App() {
           return link;
         });
         
-        // 按照order字段重新排序
         updatedLinks.sort((a, b) => (a.order || 0) - (b.order || 0));
         
         updateData(updatedLinks, categories);
@@ -552,29 +501,23 @@ function App() {
     }
   };
 
-  // 置顶链接拖拽结束事件处理函数
   const handlePinnedDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      // 获取所有置顶链接
       const pinnedLinksList = links.filter(link => link.pinned);
       
-      // 找到被拖拽元素和目标元素的索引
       const activeIndex = pinnedLinksList.findIndex(link => link.id === active.id);
       const overIndex = pinnedLinksList.findIndex(link => link.id === over.id);
       
       if (activeIndex !== -1 && overIndex !== -1) {
-        // 重新排序置顶链接
         const reorderedPinnedLinks = arrayMove(pinnedLinksList, activeIndex, overIndex);
         
-        // 创建一个映射，存储每个置顶链接的新pinnedOrder
         const pinnedOrderMap = new Map<string, number>();
         reorderedPinnedLinks.forEach((link, index) => {
           pinnedOrderMap.set(link.id, index);
         });
         
-        // 只更新置顶链接的pinnedOrder，不改变任何链接的顺序
         const updatedLinks = links.map(link => {
           if (link.pinned) {
             return { 
@@ -585,17 +528,12 @@ function App() {
           return link;
         });
         
-        // 按照pinnedOrder重新排序整个链接数组，确保置顶链接的顺序正确
-        // 同时保持非置顶链接的相对顺序不变
         updatedLinks.sort((a, b) => {
-          // 如果都是置顶链接，按照pinnedOrder排序
           if (a.pinned && b.pinned) {
             return (a.pinnedOrder || 0) - (b.pinnedOrder || 0);
           }
-          // 如果只有一个是置顶链接，置顶链接排在前面
           if (a.pinned) return -1;
           if (b.pinned) return 1;
-          // 如果都不是置顶链接，保持原位置不变（按照order或createdAt排序）
           const aOrder = a.order !== undefined ? a.order : a.createdAt;
           const bOrder = b.order !== undefined ? b.order : b.createdAt;
           return bOrder - aOrder;
@@ -606,40 +544,32 @@ function App() {
     }
   };
 
-  // 开始排序
   const startSorting = (categoryId: string) => {
     setIsSortingMode(categoryId);
   };
 
-  // 保存排序
   const saveSorting = () => {
-    // 在保存排序时，确保将当前排序后的数据保存到服务器和本地存储
     updateData(links, categories);
     setIsSortingMode(null);
   };
 
-  // 取消排序
   const cancelSorting = () => {
     setIsSortingMode(null);
   };
 
-  // 保存置顶链接排序
   const savePinnedSorting = () => {
-    // 在保存排序时，确保将当前排序后的数据保存到服务器和本地存储
     updateData(links, categories);
     setIsSortingPinned(false);
   };
 
-  // 取消置顶链接排序
   const cancelPinnedSorting = () => {
     setIsSortingPinned(false);
   };
 
-  // 设置dnd-kit的传感器
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 需要拖动8px才开始拖拽，避免误触
+        distance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -662,8 +592,6 @@ function App() {
       const linkToToggle = links.find(l => l.id === id);
       if (!linkToToggle) return;
       
-      // 如果是设置为置顶，则设置pinnedOrder为当前置顶链接数量
-      // 如果是取消置顶，则清除pinnedOrder
       const updated = links.map(l => {
         if (l.id === id) {
           const isPinned = !l.pinned;
@@ -684,10 +612,7 @@ function App() {
       localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(config));
   };
 
-  // --- Category Management & Security ---
-
   const handleCategoryClick = (cat: Category) => {
-      // If category has password and is NOT unlocked
       if (cat.password && !unlockedCategoryIds.has(cat.id)) {
           setCatAuthModalData(cat);
           setSidebarOpen(false);
@@ -710,7 +635,6 @@ function App() {
   const handleDeleteCategory = (catId: string) => {
       if (!authToken) { setIsAuthOpen(true); return; }
       
-      // 防止删除"常用推荐"分类
       if (catId === 'common') {
           alert('"常用推荐"分类不能被删除');
           return;
@@ -718,7 +642,6 @@ function App() {
       
       let newCats = categories.filter(c => c.id !== catId);
       
-      // 检查是否存在"常用推荐"分类，如果不存在则创建它
       if (!newCats.some(c => c.id === 'common')) {
           newCats = [
               { id: 'common', name: '常用推荐', icon: 'Star' },
@@ -726,14 +649,12 @@ function App() {
           ];
       }
       
-      // Move links to common or first available
       const targetId = 'common'; 
       const newLinks = links.map(l => l.categoryId === catId ? { ...l, categoryId: targetId } : l);
       
       updateData(newLinks, newCats);
   };
 
-  // --- WebDAV Config ---
   const handleSaveWebDavConfig = (config: WebDavConfig) => {
       setWebDavConfig(config);
       localStorage.setItem(WEBDAV_CONFIG_KEY, JSON.stringify(config));
@@ -744,9 +665,6 @@ function App() {
       setIsBackupModalOpen(false);
   };
 
-  // --- Filtering & Memo ---
-
-  // Helper to check if a category is "Locked" (Has password AND not unlocked)
   const isCategoryLocked = (catId: string) => {
       const cat = categories.find(c => c.id === catId);
       if (!cat || !cat.password) return false;
@@ -754,18 +672,13 @@ function App() {
   };
 
   const pinnedLinks = useMemo(() => {
-      // Don't show pinned links if they belong to a locked category
       const filteredPinnedLinks = links.filter(l => l.pinned && !isCategoryLocked(l.categoryId));
-      // 按照pinnedOrder字段排序，如果没有pinnedOrder字段则按创建时间排序
       return filteredPinnedLinks.sort((a, b) => {
-        // 如果有pinnedOrder字段，则使用pinnedOrder排序
         if (a.pinnedOrder !== undefined && b.pinnedOrder !== undefined) {
           return a.pinnedOrder - b.pinnedOrder;
         }
-        // 如果只有一个有pinnedOrder字段，有pinnedOrder的排在前面
         if (a.pinnedOrder !== undefined) return -1;
         if (b.pinnedOrder !== undefined) return 1;
-        // 如果都没有pinnedOrder字段，则按创建时间排序
         return a.createdAt - b.createdAt;
       });
   }, [links, categories, unlockedCategoryIds]);
@@ -773,10 +686,8 @@ function App() {
   const displayedLinks = useMemo(() => {
     let result = links;
     
-    // Security Filter: Always hide links from locked categories
     result = result.filter(l => !isCategoryLocked(l.categoryId));
 
-    // Search Filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(l => 
@@ -786,24 +697,16 @@ function App() {
       );
     }
 
-    // Category Filter
     if (selectedCategory !== 'all') {
       result = result.filter(l => l.categoryId === selectedCategory);
     }
     
-    // 按照order字段排序，如果没有order字段则按创建时间排序
-    // 修改排序逻辑：order值越大排在越前面，新增的卡片order值最大，会排在最前面
-    // 我们需要反转这个排序，让新增的卡片(order值最大)排在最后面
     return result.sort((a, b) => {
       const aOrder = a.order !== undefined ? a.order : a.createdAt;
       const bOrder = b.order !== undefined ? b.order : b.createdAt;
-      // 改为升序排序，这样order值小(旧卡片)的排在前面，order值大(新卡片)的排在后面
       return aOrder - bOrder;
     });
   }, [links, selectedCategory, searchQuery, categories, unlockedCategoryIds]);
-
-
-  // --- Render Components ---
 
   // 创建可排序的链接卡片组件
   const SortableLinkCard = ({ link }: { link: LinkItem }) => {
@@ -835,14 +738,20 @@ function App() {
         {...attributes}
         {...listeners}
       >
-        {/* 链接内容 - 移除a标签，改为div防止点击跳转 */}
         <div className="flex items-center gap-3 flex-1">
-          {/* Compact Icon */}
-          <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-              {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+          {/* Compact Icon with support for local Lucide icons or URL images */}
+          <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 overflow-hidden">
+              {link.icon ? (
+                  link.icon.startsWith('http') || link.icon.startsWith('data:') ? (
+                      <img src={link.icon} alt="" className="w-5 h-5 object-cover"/>
+                  ) : (
+                      <Icon name={link.icon} size={20} />
+                  )
+              ) : (
+                  link.title.charAt(0)
+              )}
           </div>
           
-          {/* Text Content - 移除描述文字 */}
           <div className="flex-1 min-w-0">
               <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate">
                   {link.title}
@@ -866,15 +775,21 @@ function App() {
         } ${isBatchEditMode ? 'cursor-pointer' : ''}`}
         onClick={() => isBatchEditMode && toggleLinkSelection(link.id)}
       >
-        {/* 链接内容 - 在批量编辑模式下不使用a标签 */}
         {isBatchEditMode ? (
           <div className="flex items-center gap-3 flex-1">
             {/* Compact Icon */}
-            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-                {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 overflow-hidden">
+                {link.icon ? (
+                    link.icon.startsWith('http') || link.icon.startsWith('data:') ? (
+                        <img src={link.icon} alt="" className="w-5 h-5 object-cover"/>
+                    ) : (
+                        <Icon name={link.icon} size={20} />
+                    )
+                ) : (
+                    link.title.charAt(0)
+                )}
             </div>
             
-            {/* Text Content */}
             <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate">
                     {link.title}
@@ -887,14 +802,21 @@ function App() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 flex-1"
-            title={link.description || link.url} // Native tooltip fallback
+            title={link.description || link.url}
           >
             {/* Compact Icon */}
-            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-                {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 overflow-hidden">
+                {link.icon ? (
+                    link.icon.startsWith('http') || link.icon.startsWith('data:') ? (
+                        <img src={link.icon} alt="" className="w-5 h-5 object-cover"/>
+                    ) : (
+                        <Icon name={link.icon} size={20} />
+                    )
+                ) : (
+                    link.title.charAt(0)
+                )}
             </div>
             
-            {/* Text Content */}
             <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {link.title}
@@ -908,7 +830,6 @@ function App() {
           </a>
         )}
 
-        {/* Hover Actions (Absolute Right or Flex) - 在批量编辑模式下隐藏 */}
         {!isBatchEditMode && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 bg-white/90 dark:bg-slate-800/90 pl-2">
               <button 
@@ -916,9 +837,7 @@ function App() {
                   className="p-1 text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md"
                   title="编辑"
               >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12A3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5a3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97c0-.33-.03-.65-.07-.97l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.08-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.64-.07.97c0 .33.03.65.07.97l-2.11 1.63c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.39 1.06.73 1.69.98l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.25 1.17-.59 1.69-.98l2.49 1c.22.08.49 0 .61-.22l2-3.46c.13-.22.07-.49-.12-.64l-2.11-1.63Z" fill="currentColor"/>
-                  </svg>
+                  <Edit2 size={14} />
               </button>
           </div>
         )}
@@ -926,10 +845,8 @@ function App() {
     );
   };
 
-
   return (
     <div className="flex h-screen overflow-hidden text-slate-900 dark:text-slate-50">
-      {/* 认证遮罩层 - 当需要认证时显示 */}
       {requiresAuth && !authToken && (
         <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 flex items-center justify-center">
           <div className="w-full max-w-md p-6">
@@ -949,7 +866,6 @@ function App() {
         </div>
       )}
       
-      {/* 主要内容 - 只有在不需要认证或已认证时显示 */}
       {(!requiresAuth || authToken) && (
         <>
           <AuthModal isOpen={isAuthOpen} onLogin={handleLogin} />
@@ -996,7 +912,6 @@ function App() {
         onUpdateLinks={(newLinks) => updateData(newLinks, categories)}
       />
 
-      {/* Sidebar Mobile Overlay */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 z-20 bg-black/50 lg:hidden backdrop-blur-sm"
@@ -1004,7 +919,6 @@ function App() {
         />
       )}
 
-      {/* Sidebar */}
       <aside 
         className={`
           fixed lg:static inset-y-0 left-0 z-30 w-64 transform transition-transform duration-300 ease-in-out
@@ -1012,14 +926,12 @@ function App() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
-        {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-slate-100 dark:border-slate-700 shrink-0">
             <span className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
               {aiConfig.navigationName || '云航 CloudNav'}
             </span>
         </div>
 
-        {/* Categories List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-1 scrollbar-hide">
             <button
               onClick={() => { setSelectedCategory('all'); setSidebarOpen(false); }}
@@ -1066,7 +978,6 @@ function App() {
             })}
         </div>
 
-        {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
             
             <div className="grid grid-cols-3 gap-2 mb-2">
@@ -1120,10 +1031,8 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
         
-        {/* Header */}
         <header className="h-16 px-4 lg:px-8 flex items-center justify-between bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 shrink-0">
           <div className="flex items-center gap-4 flex-1">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-slate-600 dark:text-slate-300">
@@ -1162,10 +1071,8 @@ function App() {
           </div>
         </header>
 
-        {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8">
             
-            {/* 1. Pinned Area (Custom Top Area) */}
             {pinnedLinks.length > 0 && !searchQuery && (selectedCategory === 'all') && (
                 <section>
                     <div className="flex items-center justify-between mb-4">
@@ -1229,7 +1136,6 @@ function App() {
                 </section>
             )}
 
-            {/* 2. Main Grid */}
             {(selectedCategory !== 'all' || searchQuery) && (
             <section>
                  {(!pinnedLinks.length && !searchQuery && selectedCategory === 'all') && (
