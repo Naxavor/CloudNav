@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, Pin, Wand2, Trash2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Pin, Trash2 } from 'lucide-react';
 import { LinkItem, Category, AIConfig } from '../types';
-import { generateLinkDescription, suggestCategory } from '../services/geminiService';
+import { generateLinkDescription, suggestCategory, suggestIcon } from '../services/geminiService';
 
 interface LinkModalProps {
   isOpen: boolean;
@@ -21,7 +21,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
   const [pinned, setPinned] = useState(false);
   const [icon, setIcon] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isFetchingIcon, setIsFetchingIcon] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -68,44 +67,18 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
     try {
         const descPromise = generateLinkDescription(title, url, aiConfig);
         const catPromise = suggestCategory(title, url, categories, aiConfig);
+        const iconPromise = suggestIcon(title, url, aiConfig);
         
-        const [desc, cat] = await Promise.all([descPromise, catPromise]);
+        const [desc, cat, suggestedIcon] = await Promise.all([descPromise, catPromise, iconPromise]);
         
         if (desc) setDescription(desc);
         if (cat) setCategoryId(cat);
+        if (suggestedIcon) setIcon(suggestedIcon);
         
     } catch (e) {
         console.error("AI Assist failed", e);
     } finally {
         setIsGenerating(false);
-    }
-  };
-
-  const handleFetchIcon = async () => {
-    if (!url) return;
-    
-    setIsFetchingIcon(true);
-    try {
-      // 提取域名
-      let domain = url;
-      // 如果URL没有协议前缀，添加https://作为默认协议
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        domain = 'https://' + url;
-      }
-      
-      if (domain.startsWith('http://') || domain.startsWith('https://')) {
-        const urlObj = new URL(domain);
-        domain = urlObj.hostname;
-      }
-      
-      // 构建图标URL
-      const iconUrl = `https://www.faviconextractor.com/favicon/${domain}?larger=true`;
-      setIcon(iconUrl);
-    } catch (e) {
-      console.error("Failed to fetch icon", e);
-      alert("无法获取图标，请检查URL是否正确");
-    } finally {
-      setIsFetchingIcon(false);
     }
   };
 
@@ -179,28 +152,15 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 dark:text-slate-300">图标 URL</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-300">图标 (URL 或 图标名称)</label>
             <div className="flex gap-2">
               <input
-                type="url"
+                type="text"
                 value={icon}
                 onChange={(e) => setIcon(e.target.value)}
-                className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                placeholder="https://example.com/icon.png"
+                className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                placeholder="例如: Github, https://..."
               />
-              <button
-                type="button"
-                onClick={handleFetchIcon}
-                disabled={!url || isFetchingIcon}
-                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-1 transition-colors"
-              >
-                {isFetchingIcon ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
-                自动获取图标
-              </button>
             </div>
           </div>
 
@@ -215,7 +175,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                         className="text-xs flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
                     >
                         {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                        AI 自动填写
+                        AI 自动填写 (包含图标)
                     </button>
                 )}
             </div>
