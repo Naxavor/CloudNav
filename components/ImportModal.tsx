@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, ArrowRight, Check, AlertCircle, FolderInput, ListTree, Database } from 'lucide-react';
+import { X, Upload, FileText, Check, AlertCircle, FolderInput, ListTree, Database } from 'lucide-react';
 import { Category, LinkItem } from '../types';
 import { parseBookmarks } from '../services/bookmarkParser';
 
@@ -19,7 +19,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
   onImport 
 }) => {
   const [step, setStep] = useState<'upload' | 'preview'>('upload');
-  const [file, setFile] = useState<File | null>(null);
+  // const [file, setFile] = useState<File | null>(null); // Unused
   const [analyzing, setAnalyzing] = useState(false);
   
   // Analysis Results
@@ -30,6 +30,8 @@ const ImportModal: React.FC<ImportModalProps> = ({
   // Staging Data
   const [parsedLinks, setParsedLinks] = useState<LinkItem[]>([]);
   const [parsedCategories, setParsedCategories] = useState<Category[]>([]);
+  // Fix: Store ALL categories from the file to correctly map links later, even if category exists
+  const [allImportedCategories, setAllImportedCategories] = useState<Category[]>([]);
   
   // Options
   const [importMode, setImportMode] = useState<'original' | 'merge'>('original');
@@ -56,9 +58,10 @@ const ImportModal: React.FC<ImportModalProps> = ({
 
   const resetState = () => {
     setStep('upload');
-    setFile(null);
+    // setFile(null);
     setParsedLinks([]);
     setParsedCategories([]);
+    setAllImportedCategories([]); // Reset full list
     setNewLinksCount(0);
     setDuplicateCount(0);
     setNewCategoriesCount(0);
@@ -74,7 +77,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
     
-    setFile(selectedFile);
+    // setFile(selectedFile);
     setAnalyzing(true);
     setImportType(type);
 
@@ -87,7 +90,10 @@ const ImportModal: React.FC<ImportModalProps> = ({
             result = await parseJsonBackup(selectedFile);
         }
         
-        // 2. Diff Logic
+        // Save ALL categories for later lookup
+        setAllImportedCategories(result.categories);
+
+        // 2. Diff Logic (Links)
         const existingUrls = new Set(existingLinks.map(l => l.url.trim().replace(/\/$/, ''))); // Normalize URLs slightly
         
         const uniqueNewLinks: LinkItem[] = [];
@@ -121,6 +127,9 @@ const ImportModal: React.FC<ImportModalProps> = ({
         console.error(error);
     } finally {
         setAnalyzing(false);
+        // Clear input value to allow re-selecting same file
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
     }
   };
 
@@ -138,21 +147,15 @@ const ImportModal: React.FC<ImportModalProps> = ({
           finalCategories = []; 
       } else {
           // Keep structure mode
-          // We need to merge categories carefully.
-          // Since parseBookmarks generates IDs for categories, if a category name already exists in `categories`, 
-          // we should remap the links to the existing category ID instead of creating a new duplicate-named category.
-          
           const nameToIdMap = new Map<string, string>();
+          // Map existing categories: Name -> ID
           categories.forEach(c => nameToIdMap.set(c.name, c.id));
 
           // Valid new categories to add
           const categoriesToAdd: Category[] = [];
 
           parsedCategories.forEach(pc => {
-              if (nameToIdMap.has(pc.name)) {
-                  // Category exists, we don't add it.
-                  // But we need to know its ID to remap links.
-              } else {
+              if (!nameToIdMap.has(pc.name)) {
                   categoriesToAdd.push(pc);
                   nameToIdMap.set(pc.name, pc.id); // Add new one to map
               }
@@ -160,14 +163,15 @@ const ImportModal: React.FC<ImportModalProps> = ({
 
           // Remap links
           finalLinks = finalLinks.map(link => {
-             // Find the name of the category this link was assigned to in the parser
-             const originalCat = parsedCategories.find(c => c.id === link.categoryId) 
-                                 || categories.find(c => c.id === link.categoryId); // Fallback
+             // Find the category object in the FULL list from the file
+             const originalCat = allImportedCategories.find(c => c.id === link.categoryId);
              
+             // If we found the category definition and we have a mapped ID (either existing or new)
              if (originalCat && nameToIdMap.has(originalCat.name)) {
                  return { ...link, categoryId: nameToIdMap.get(originalCat.name)! };
              }
-             // If for some reason we can't find the map, put it in common
+             
+             // Fallback: if category not found or mapping failed, put in 'common'
              return { ...link, categoryId: 'common' };
           });
 
@@ -290,7 +294,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
                                     <div className="flex items-center gap-2 font-medium text-sm dark:text-white">
                                         <ListTree size={16} /> 保持原目录结构
                                     </div>
-                                    <p className="text-xs text-slate-500 mt-1">如果分类不存在，将自动创建。</p>
+                                    <p className="text-xs text-slate-500 mt-1">如果分类不存在，将自动创建；如果存在，则合并。</p>
                                 </div>
                             </label>
 
