@@ -130,3 +130,41 @@ export const suggestCategory = async (title: string, url: string, categories: {i
         return null;
     }
 }
+
+/**
+ * Suggests a Lucide icon
+ */
+export const suggestIcon = async (title: string, url: string, config: AIConfig): Promise<string | null> => {
+    if (!config.apiKey) return null;
+
+    const prompt = `
+        Website: "${title}" (${url})
+        Suggest a Lucide React icon name that best represents this website.
+        Examples: "Github" for GitHub, "Twitter" for Twitter, "Youtube" for YouTube, "Book" for documentation, "ShoppingBag" for e-commerce, "Code" for development, "Palette" for design.
+        Return ONLY the icon name (CamelCase).
+    `;
+
+    try {
+        if (config.provider === 'gemini') {
+            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+            const modelName = config.model || 'gemini-2.5-flash';
+            
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: `Task: Pick an icon.\n${prompt}`,
+            });
+            return response.text ? response.text.trim() : null;
+        } else {
+             // OpenAI Compatible
+            const result = await callOpenAICompatible(
+                config,
+                "You are an icon selection assistant. You only output the Lucide icon name.",
+                prompt
+            );
+            return result || null;
+        }
+    } catch (e) {
+        console.error(e);
+        return null;
+    }
+}
